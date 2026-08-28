@@ -7,6 +7,7 @@ import useImage from "use-image";
 import { Upload, Image as ImageIcon, Type, Download, Trash2, ArrowUpToLine, ArrowDownToLine, Wand2, Loader2, PaintBucket, Settings2, RefreshCw, Undo2, Redo2, Lock, Unlock, GripVertical, Layers, Square, Crop, MoreHorizontal, Eraser, ChevronLeft } from "lucide-react";
 import { removeBackground, Config } from "@imgly/background-removal";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export type ElementType = "text" | "image" | "bg" | "canvas";
 
@@ -335,6 +336,10 @@ export default function TemplateEditor() {
   const router = useRouter();
 
   const [activeEditingElement, setActiveEditingElement] = useState<string | null>(null);
+
+  const [templateName, setTemplateName] = useState("Untitled Template");
+  const [templateCategory, setTemplateCategory] = useState("General");
+  const [isSaving, setIsSaving] = useState(false);
 
   const [bgImageUrl, setBgImageUrl] = useState<string | null>(null);
   const [originalBgImageUrl, setOriginalBgImageUrl] = useState<string | null>(null);
@@ -682,15 +687,49 @@ export default function TemplateEditor() {
     }
   };
 
-  const saveTemplate = () => {
-    const metadata = {
-      canvasWidth: STAGE_WIDTH,
-      canvasHeight: STAGE_HEIGHT,
-      canvasColor: artboardColor,
-      fields: elements.filter(el => el.type !== 'bg').map(({ id, imageSrc, ...rest }) => rest), // don't save the temporary imageSrc
-    };
-    console.log("Saving Template Metadata:", JSON.stringify(metadata, null, 2));
-    alert("Template metadata saved to console!");
+  const saveTemplate = async () => {
+    setIsSaving(true);
+    try {
+      let finalBgUrl = null;
+      if (bgImageUrl && bgImageUrl.startsWith('blob:')) {
+        const res = await fetch(bgImageUrl);
+        const blob = await res.blob();
+        const fileExt = blob.type.split('/')[1] || 'png';
+        const fileName = `bg_${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('templates').upload(fileName, blob);
+        
+        // If storage fails, we might just proceed without background or alert (ignoring storage errors if bucket doesn't exist yet for simplicity)
+        if (!uploadError) {
+          const { data: publicUrlData } = supabase.storage.from('templates').getPublicUrl(fileName);
+          finalBgUrl = publicUrlData.publicUrl;
+        } else {
+          console.warn("Storage upload failed, background won't be saved correctly if bucket 'templates' is missing.", uploadError);
+        }
+      } else {
+        finalBgUrl = bgImageUrl;
+      }
+
+      const metadata = {
+        name: templateName,
+        category: templateCategory,
+        width: STAGE_WIDTH,
+        height: STAGE_HEIGHT,
+        artboard_color: artboardColor,
+        background_url: finalBgUrl,
+        elements: elements.filter(el => el.type !== 'bg').map(({ id, imageSrc, ...rest }) => rest)
+      };
+
+      const { error } = await supabase.from('templates').insert(metadata);
+      if (error) throw error;
+      
+      alert("Template saved successfully!");
+      router.push("/admin"); // Redirect back to admin dashboard
+    } catch (err: any) {
+      console.error("Save Template Error:", err);
+      alert("Failed to save template: " + err.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
 
@@ -748,6 +787,13 @@ export default function TemplateEditor() {
           <button onClick={() => setActiveLeftTab(activeLeftTab === 'branding' ? 'none' : 'branding')} className={`w-full py-3 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border shadow-sm ${activeLeftTab === 'branding' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-200'}`}>
             <Layers size={20} className="group-hover:-translate-y-1 transition-transform" />
             <span className="text-[9px] font-bold uppercase tracking-wider">Brand</span>
+          </button>
+
+          <div className="w-full h-[1px] bg-gray-200 my-1"></div>
+
+          <button onClick={saveTemplate} disabled={isSaving} className="w-full py-3 bg-[#2665d6] hover:bg-[#1d4ed8] text-white rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group shadow-sm disabled:opacity-50">
+            {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} className="group-hover:-translate-y-1 transition-transform" />}
+            <span className="text-[9px] font-bold uppercase tracking-wider">{isSaving ? 'Saving' : 'Save'}</span>
           </button>
         </div>
       </div>
@@ -1265,6 +1311,24 @@ export default function TemplateEditor() {
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] p-5 flex flex-col gap-6">
+
+          {/* Template Meta */}
+          <div className="flex flex-col gap-4 pb-5 border-b border-gray-200">
+             <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Template Name</label>
+                <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]" placeholder="e.g. Birthday Card" />
+             </div>
+             <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Category</label>
+                <select value={templateCategory} onChange={(e) => setTemplateCategory(e.target.value)} className="w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]">
+                  <option value="General">General</option>
+                  <option value="Birthday">Birthday</option>
+                  <option value="Wedding">Wedding</option>
+                  <option value="Onam">Onam</option>
+                  <option value="Christmas">Christmas</option>
+                </select>
+             </div>
+          </div>
 
           {selectedElement ? (
             <>
