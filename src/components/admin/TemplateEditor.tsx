@@ -213,6 +213,26 @@ const URLImageElement = ({ el, selectedId, onSelect, onChange }: { el: TemplateE
 
   const konvaFilters = getKonvaFilters(el.filters);
 
+  let autoCrop = undefined;
+  if (image && !el.crop) {
+    const aspectRatio = (el.width || 100) / (el.height || 100);
+    const imgRatio = image.width / image.height;
+    let newWidth, newHeight;
+    if (aspectRatio >= imgRatio) {
+      newWidth = image.width;
+      newHeight = image.width / aspectRatio;
+    } else {
+      newWidth = image.height * aspectRatio;
+      newHeight = image.height;
+    }
+    autoCrop = {
+      x: (image.width - newWidth) / 2,
+      y: (image.height - newHeight) / 2,
+      width: newWidth,
+      height: newHeight
+    };
+  }
+
   return (
     <React.Fragment>
       {el.imageSrc ? (
@@ -251,7 +271,7 @@ const URLImageElement = ({ el, selectedId, onSelect, onChange }: { el: TemplateE
             blurRadius={el.filters?.blurRadius || 0}
             noise={el.filters?.noise || 0}
             cornerRadius={el.cornerRadius || 0}
-            crop={el.crop}
+            crop={el.crop || autoCrop}
           />
           {el.drawLines?.map((line: DrawLine, i: number) => (
             <Line

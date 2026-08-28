@@ -17,6 +17,14 @@ export function GenerateCanvas({ template }: { template: any }) {
   const [elements, setElements] = useState<any[]>([]);
   const [bgImage] = useImage(template.background_url || "");
   const [downloaded, setDownloaded] = useState(false);
+  const [windowSize, setWindowSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Auto-fill logic on mount
   useEffect(() => {
@@ -50,13 +58,30 @@ export function GenerateCanvas({ template }: { template: any }) {
     const [img] = useImage(element.imageSrc || "");
     const imageWidth = element.width || 150;
     const imageHeight = element.height || 150;
-    const scaleX = element.imageScaleX || 1;
-    const scaleY = element.imageScaleY || 1;
-    const ix = element.imageX || 0;
-    const iy = element.imageY || 0;
+
+    let cropObj = undefined;
+    if (img) {
+      const aspectRatio = imageWidth / imageHeight;
+      const imgRatio = img.width / img.height;
+      let newWidth, newHeight;
+      if (aspectRatio >= imgRatio) {
+        newWidth = img.width;
+        newHeight = img.width / aspectRatio;
+      } else {
+        newWidth = img.height * aspectRatio;
+        newHeight = img.height;
+      }
+      cropObj = {
+        x: (img.width - newWidth) / 2,
+        y: (img.height - newHeight) / 2,
+        width: newWidth,
+        height: newHeight
+      };
+    }
+
     return (
       <Group x={element.x} y={element.y} width={imageWidth} height={imageHeight} clip={{ x: 0, y: 0, width: imageWidth, height: imageHeight }}>
-        {img ? <KonvaImage image={img} x={ix} y={iy} width={img.width * scaleX} height={img.height * scaleY} draggable={element.name === 'userImage'} />
+        {img ? <KonvaImage image={img} width={imageWidth} height={imageHeight} crop={cropObj} draggable={element.name === 'userImage'} />
              : <Rect width={imageWidth} height={imageHeight} fill="#27272a" />}
       </Group>
     );
@@ -95,16 +120,16 @@ export function GenerateCanvas({ template }: { template: any }) {
           <div
             className="relative rounded-[24px] overflow-hidden shadow-2xl border border-white/10"
             style={{
-              width: Math.min(template.width, typeof window !== 'undefined' ? window.innerWidth - 40 : 340),
-              height: Math.min(template.height, typeof window !== 'undefined' ? (window.innerHeight - 260) : 480),
+              width: windowSize.width > 0 ? Math.min(windowSize.width - 40, template.width * Math.min(1, (windowSize.width - 40) / template.width, (windowSize.height - 260) / template.height)) : 340,
+              height: windowSize.height > 0 ? Math.min(windowSize.height - 260, template.height * Math.min(1, (windowSize.width - 40) / template.width, (windowSize.height - 260) / template.height)) : 480,
             }}
           >
             <Stage
-              width={Math.min(template.width, typeof window !== 'undefined' ? window.innerWidth - 40 : 340)}
-              height={Math.min(template.height, typeof window !== 'undefined' ? (window.innerHeight - 260) : 480)}
+              width={windowSize.width > 0 ? Math.min(windowSize.width - 40, template.width * Math.min(1, (windowSize.width - 40) / template.width, (windowSize.height - 260) / template.height)) : 340}
+              height={windowSize.height > 0 ? Math.min(windowSize.height - 260, template.height * Math.min(1, (windowSize.width - 40) / template.width, (windowSize.height - 260) / template.height)) : 480}
               ref={stageRef}
-              scaleX={Math.min(1, (typeof window !== 'undefined' ? window.innerWidth - 40 : 340) / template.width)}
-              scaleY={Math.min(1, (typeof window !== 'undefined' ? (window.innerHeight - 260) : 480) / template.height)}
+              scaleX={windowSize.width > 0 ? Math.min(1, (windowSize.width - 40) / template.width, (windowSize.height - 260) / template.height) : Math.min(1, 340 / template.width)}
+              scaleY={windowSize.height > 0 ? Math.min(1, (windowSize.width - 40) / template.width, (windowSize.height - 260) / template.height) : Math.min(1, 480 / template.height)}
             >
               <Layer>
                 <Rect x={0} y={0} width={template.width} height={template.height} fill={template.artboard_color || '#ffffff'} />
