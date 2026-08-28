@@ -1,26 +1,140 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
+@theme {
+  /* --- Brand Palette --- */
+  --color-brand-violet: #7c3aed;
+  --color-brand-violet-light: #a78bfa;
+  --color-brand-violet-glow: rgba(124, 58, 237, 0.35);
+  --color-brand-pink: #ec4899;
+  --color-brand-pink-glow: rgba(236, 72, 153, 0.25);
+
+  /* --- Surface Palette --- */
+  --color-bg-deep: #1a0008;
+  --color-bg-card: #230010;
+  --color-bg-card-hover: #2e0016;
+  --color-bg-surface: #380019;
+  --color-bg-elevated: #45001f;
+
+  /* --- Text Palette --- */
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #52525b;
+
+  /* --- Border Palette --- */
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-muted: rgba(255, 255, 255, 0.10);
+
+  /* --- Shadows --- */
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-glow-violet: 0 0 40px rgba(124, 58, 237, 0.4), 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-bottom-nav: 0 -1px 0 rgba(255,255,255,0.06), 0 -8px 32px rgba(0,0,0,0.6);
+
+  /* --- Radii --- */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-brand-violet: #7c3aed;
+  --color-brand-violet-light: #a78bfa;
+  --color-brand-violet-glow: rgba(124, 58, 237, 0.35);
+  --color-brand-pink: #ec4899;
+  --color-bg-deep: #1a0008;
+  --color-bg-card: #230010;
+  --color-bg-card-hover: #2e0016;
+  --color-bg-surface: #380019;
+  --color-bg-elevated: #45001f;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #52525b;
+  --color-border-subtle: rgba(255, 255, 255, 0.06);
+  --color-border-muted: rgba(255, 255, 255, 0.10);
+  --shadow-glow-violet: 0 0 40px rgba(124, 58, 237, 0.4), 0 8px 32px rgba(0,0,0,0.5);
+  --shadow-bottom-nav: 0 -1px 0 rgba(255,255,255,0.06), 0 -8px 32px rgba(0,0,0,0.6);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-bg-deep);
+  background-image: radial-gradient(ellipse at top, #3d0020 0%, #1a0008 60%);
+  background-attachment: fixed;
+  color: var(--color-text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overscroll-behavior: none;
+}
+
+/* --- Gradient Utilities --- */
+.gradient-brand {
+  background: linear-gradient(135deg, #7c3aed 0%, #ec4899 100%);
+}
+
+.gradient-brand-text {
+  background: linear-gradient(135deg, #a78bfa 0%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* --- Glass Card --- */
+.glass-card {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* --- Bottom Nav Spacing --- */
+.pb-nav {
+  padding-bottom: 96px;
+}
+
+/* --- Hide scrollbar --- */
+::-webkit-scrollbar { width: 0; height: 0; }
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* --- Animations --- */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+.animate-slide-up { animation: slide-up 0.5s ease forwards; }
+.animate-fade-in { animation: fade-in 0.4s ease forwards; }
+
+/* --- Admin Editor Compatibility --- */
+.font-bento {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
