@@ -173,22 +173,32 @@ export function GenerateCanvas({ template }: { template: any }) {
           </div>
         )}
 
-        {/* Download button */}
-        <button
-          onClick={handleDownload}
-          className={`w-full py-4 rounded-[20px] flex items-center justify-center gap-3 font-bold text-[16px] transition-all duration-300 ${
-            downloaded
-              ? 'bg-green-500 text-white'
-              : 'gradient-brand text-white'
-          }`}
-          style={{ boxShadow: downloaded ? '0 0 40px rgba(34, 197, 94, 0.4)' : 'var(--shadow-glow-violet)' }}
-        >
-          {downloaded ? (
-            <><Check size={20} /> Saved to device!</>
-          ) : (
-            <><Download size={20} /> Download Design</>
-          )}
-        </button>
+        <div className="flex flex-col gap-3">
+          {/* Download button */}
+          <button
+            onClick={handleDownload}
+            className={`w-full py-4 rounded-[20px] flex items-center justify-center gap-3 font-bold text-[16px] transition-all duration-300 ${
+              downloaded
+                ? 'bg-green-500 text-white'
+                : 'gradient-brand text-white'
+            }`}
+            style={{ boxShadow: downloaded ? '0 0 40px rgba(34, 197, 94, 0.4)' : 'var(--shadow-glow-violet)' }}
+          >
+            {downloaded ? (
+              <><Check size={20} /> Saved to device!</>
+            ) : (
+              <><Download size={20} /> Download Design</>
+            )}
+          </button>
+
+          {/* Advanced Edit Button */}
+          <Link
+            href={`/editor/${template.id}?id=${template.id}`}
+            className="w-full py-4 rounded-[20px] bg-white text-[var(--color-brand-violet)] border border-[var(--color-brand-violet-light)] flex items-center justify-center gap-3 font-bold text-[16px] hover:bg-violet-50 transition-colors shadow-sm"
+          >
+            Edit Manually
+          </Link>
+        </div>
       </div>
     </div>
   );

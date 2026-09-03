@@ -4,10 +4,12 @@ import React, { useState, useRef, useEffect } from "react";
 import { Stage, Layer, Image as KonvaImage, Text, Rect, Transformer, Group, Line } from "react-konva";
 import Konva from "konva";
 import useImage from "use-image";
-import { Upload, Image as ImageIcon, Type, Download, Trash2, ArrowUpToLine, ArrowDownToLine, Wand2, Loader2, PaintBucket, Settings2, RefreshCw, Undo2, Redo2, Lock, Unlock, GripVertical, Layers, Square, Crop, MoreHorizontal, Eraser, ChevronLeft } from "lucide-react";
+import { Upload, Image as ImageIcon, Type, Download, Trash2, ArrowUpToLine, ArrowDownToLine, Wand2, Loader2, PaintBucket, Settings2, RefreshCw, Undo2, Redo2, Lock, Unlock, GripVertical, Layers, Square, Crop, MoreHorizontal, Eraser, ChevronLeft, ChevronUp, ChevronDown } from "lucide-react";
 import { removeBackground, Config } from "@imgly/background-removal";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import EmojiPicker from 'emoji-picker-react';
+import { polyfill } from "mobile-drag-drop";
 
 export type ElementType = "text" | "image" | "bg" | "canvas";
 
@@ -194,10 +196,11 @@ const BgImageElement = ({ el, bgImage, STAGE_WIDTH, STAGE_HEIGHT, onSelect, isMa
   );
 };
 
-const URLImageElement = ({ el, selectedId, onSelect, onChange }: { el: TemplateElement, selectedId: string | null, onSelect: () => void, onChange: (newAttrs: any) => void }) => {
-  const [image] = useImage(el.imageSrc || "");
+const URLImageElement = ({ el, selectedId, onSelect, onChange, isCropMode, tempCrop, setTempCrop }: { el: TemplateElement, selectedId: string | null, onSelect: () => void, onChange: (newAttrs: any) => void, isCropMode?: boolean, tempCrop?: any, setTempCrop?: (c: any) => void }) => {
+  const [image] = useImage(el.imageSrc || "", "anonymous");
   const imageRef = useRef<any>(null);
   const trRef = useRef<any>(null);
+  const [liveBounds, setLiveBounds] = useState<any>(null);
 
   useEffect(() => {
     if (selectedId === el.id && imageRef.current) {
@@ -240,40 +243,164 @@ const URLImageElement = ({ el, selectedId, onSelect, onChange }: { el: TemplateE
         <Group x={el.x} y={el.y} draggable={!el.isLocked} listening={!el.isLocked}
           onDragEnd={(e) => {
             onChange({ x: e.target.x(), y: e.target.y() });
-          }}
-          onTransformEnd={(e) => {
-            const node = trRef.current?.node();
-            if (!node) return;
-            const scaleX = node.scaleX();
-            const scaleY = node.scaleY();
-            node.scaleX(1);
-            node.scaleY(1);
-            onChange({
-              x: node.x(),
-              y: node.y(),
-              width: Math.max(5, node.width() * scaleX),
-              height: Math.max(5, node.height() * scaleY),
-            });
           }}>
-          <KonvaImage
-            ref={imageRef}
-            image={image}
-            x={el.flipX ? el.width : 0}
-            y={el.flipY ? el.height : 0}
-            scaleX={el.flipX ? -1 : 1}
-            scaleY={el.flipY ? -1 : 1}
-            width={el.width}
-            height={el.height}
-            onClick={onSelect}
-            onTap={onSelect}
-            filters={konvaFilters}
-            brightness={el.filters?.brightness || 0}
-            contrast={el.filters?.contrast || 0}
-            blurRadius={el.filters?.blurRadius || 0}
-            noise={el.filters?.noise || 0}
-            cornerRadius={el.cornerRadius || 0}
-            crop={el.crop || autoCrop}
-          />
+          {isCropMode && selectedId === el.id ? (
+            <>
+              {/* Semi-transparent background image showing full original image */}
+              <KonvaImage
+                image={image}
+                x={-(tempCrop || el.crop || autoCrop)?.x * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                y={-(tempCrop || el.crop || autoCrop)?.y * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                width={(image?.width || 100) * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                height={(image?.height || 100) * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                opacity={0.4}
+              />
+              {/* Clipped foreground image */}
+              <Group clipX={0} clipY={0} clipWidth={el.width || 100} clipHeight={el.height || 100}>
+                <KonvaImage
+                  ref={imageRef}
+                  image={image}
+                  x={-(tempCrop || el.crop || autoCrop)?.x * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                  y={-(tempCrop || el.crop || autoCrop)?.y * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                  width={(image?.width || 100) * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                  height={(image?.height || 100) * ((el.width || 100) / (tempCrop || el.crop || autoCrop)?.width)}
+                  draggable
+                  onDragEnd={(e) => {
+                    const node = e.target;
+                    const scale = (el.width || 100) / (tempCrop || el.crop || autoCrop).width;
+                    if (setTempCrop) {
+                      setTempCrop({
+                        ...(tempCrop || el.crop || autoCrop),
+                        x: -node.x() / scale,
+                        y: -node.y() / scale,
+                      });
+                    }
+                  }}
+                  onTransform={(e) => {
+                    const node = imageRef.current;
+                    if (!node || !image) return;
+                    
+                    const scaleX = node.scaleX();
+                    const scaleY = node.scaleY();
+                    
+                    const currentScale = (el.width || 100) / (tempCrop || el.crop || autoCrop).width;
+                    const drawnWidth = image.width * currentScale;
+                    const drawnHeight = image.height * currentScale;
+                    
+                    const newDrawnWidth = drawnWidth * scaleX;
+                    const newDrawnHeight = drawnHeight * scaleY;
+                    
+                    node.scaleX(1);
+                    node.scaleY(1);
+                    node.width(newDrawnWidth);
+                    node.height(newDrawnHeight);
+                    
+                    const newScale = newDrawnWidth / image.width;
+                    const newCropWidth = (el.width || 100) / newScale;
+                    const newCropHeight = (el.height || 100) / newScale;
+                    const newCropX = -node.x() / newScale;
+                    const newCropY = -node.y() / newScale;
+                    
+                    if (setTempCrop) {
+                      setTempCrop({
+                        x: newCropX,
+                        y: newCropY,
+                        width: newCropWidth,
+                        height: newCropHeight
+                      });
+                    }
+                  }}
+                />
+              </Group>
+            </>
+          ) : (
+            <KonvaImage
+              ref={imageRef}
+              image={image}
+              x={liveBounds ? liveBounds.x : (el.flipX ? el.width : 0)}
+              y={liveBounds ? liveBounds.y : (el.flipY ? el.height : 0)}
+              scaleX={liveBounds ? liveBounds.scaleX : (el.flipX ? -1 : 1)}
+              scaleY={liveBounds ? liveBounds.scaleY : (el.flipY ? -1 : 1)}
+              width={liveBounds ? liveBounds.width : el.width}
+              height={liveBounds ? liveBounds.height : el.height}
+              onClick={onSelect}
+              onTap={onSelect}
+              filters={konvaFilters}
+              brightness={el.filters?.brightness || 0}
+              contrast={el.filters?.contrast || 0}
+              blurRadius={el.filters?.blurRadius || 0}
+              noise={el.filters?.noise || 0}
+              cornerRadius={el.cornerRadius || 0}
+              crop={liveBounds ? liveBounds.crop : (el.crop || autoCrop)}
+              onTransform={(e) => {
+                const node = imageRef.current;
+                if (!node || !image) return;
+                
+                const scaleX = node.scaleX();
+                const scaleY = node.scaleY();
+                const absScaleX = Math.abs(scaleX);
+                const absScaleY = Math.abs(scaleY);
+                
+                node.scaleX(el.flipX ? -1 : 1);
+                node.scaleY(el.flipY ? -1 : 1);
+                
+                const newWidth = Math.max(5, node.width() * absScaleX);
+                const newHeight = Math.max(5, node.height() * absScaleY);
+                node.width(newWidth);
+                node.height(newHeight);
+                
+                let newCrop = el.crop || autoCrop;
+                if (!el.crop) {
+                  const aspectRatio = newWidth / newHeight;
+                  const imgRatio = image.width / image.height;
+                  let cropWidth, cropHeight;
+                  if (aspectRatio >= imgRatio) {
+                    cropWidth = image.width;
+                    cropHeight = image.width / aspectRatio;
+                  } else {
+                    cropWidth = image.height * aspectRatio;
+                    cropHeight = image.height;
+                  }
+                  newCrop = {
+                    x: (image.width - cropWidth) / 2,
+                    y: (image.height - cropHeight) / 2,
+                    width: cropWidth,
+                    height: cropHeight
+                  };
+                  node.crop(newCrop);
+                  node.getLayer()?.batchDraw();
+                }
+                
+                setLiveBounds({
+                  x: node.x(),
+                  y: node.y(),
+                  scaleX: el.flipX ? -1 : 1,
+                  scaleY: el.flipY ? -1 : 1,
+                  width: newWidth,
+                  height: newHeight,
+                  crop: newCrop
+                });
+              }}
+              onTransformEnd={(e) => {
+                const node = imageRef.current;
+                if (!node) return;
+                
+                const initialRelativeX = el.flipX ? (el.width || 100) : 0;
+                const initialRelativeY = el.flipY ? (el.height || 100) : 0;
+                
+                const finalWidth = liveBounds ? liveBounds.width : node.width();
+                const finalHeight = liveBounds ? liveBounds.height : node.height();
+                
+                onChange({
+                  x: el.x + (node.x() - initialRelativeX),
+                  y: el.y + (node.y() - initialRelativeY),
+                  width: finalWidth,
+                  height: finalHeight,
+                });
+                setLiveBounds(null);
+              }}
+            />
+          )}
           {el.drawLines?.map((line: DrawLine, i: number) => (
             <Line
               key={i}
@@ -316,6 +443,16 @@ const URLImageElement = ({ el, selectedId, onSelect, onChange }: { el: TemplateE
               height: Math.max(5, node.height() * scaleY),
             });
           }}
+          onTransform={(e) => {
+            const node = imageRef.current;
+            if (!node) return;
+            const scaleX = node.scaleX();
+            const scaleY = node.scaleY();
+            node.scaleX(1);
+            node.scaleY(1);
+            node.width(Math.max(5, node.width() * Math.abs(scaleX)));
+            node.height(Math.max(5, node.height() * Math.abs(scaleY)));
+          }}
         />
       )}
       {selectedId === el.id && (
@@ -332,24 +469,72 @@ const URLImageElement = ({ el, selectedId, onSelect, onChange }: { el: TemplateE
   );
 };
 
-export default function TemplateEditor() {
+export default function TemplateEditor({ isClientMode = false }: { isClientMode?: boolean }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get('id');
 
   const [activeEditingElement, setActiveEditingElement] = useState<string | null>(null);
 
   const [templateName, setTemplateName] = useState("Untitled Template");
   const [templateCategory, setTemplateCategory] = useState("General");
+  const [templateKeywords, setTemplateKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState("");
+  const [existingCategories, setExistingCategories] = useState<{name: string, icon: string}[]>([
+    {name: 'General', icon: '⭐'},
+    {name: 'Birthday', icon: '🎂'},
+    {name: 'Wedding', icon: '💍'},
+    {name: 'Onam', icon: '🌸'},
+    {name: 'Christmas', icon: '🎄'}
+  ]);
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
+  const [categoryIcon, setCategoryIcon] = useState("⭐");
+  const [showIconPicker, setShowIconPicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('templates')
+          .select('category, elements, created_at')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        if (data) {
+          const uniqueCats = new Map<string, string>();
+          data.forEach(t => {
+            if (t.category && !uniqueCats.has(t.category)) {
+              let icon = '⭐';
+              if (t.elements && Array.isArray(t.elements)) {
+                const metaEl = t.elements.find((el: any) => el.id === 'category-icon-meta');
+                if (metaEl && metaEl.icon) icon = metaEl.icon;
+              }
+              uniqueCats.set(t.category, icon);
+            }
+          });
+          if (uniqueCats.size > 0) {
+            setExistingCategories(Array.from(uniqueCats.entries()).map(([name, icon]) => ({ name, icon })));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch categories:", error);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const [bgImageUrl, setBgImageUrl] = useState<string | null>(null);
   const [originalBgImageUrl, setOriginalBgImageUrl] = useState<string | null>(null);
-  const [bgImage] = useImage(bgImageUrl || "");
+  const [bgImage] = useImage(bgImageUrl || "", "anonymous");
 
   // History State
   const [history, setHistory] = useState<TemplateElement[][]>([
     [{ id: 'canvas-bg', type: 'canvas', name: 'Canvas', x: 0, y: 0, isLocked: true }]
   ]);
   const [historyStep, setHistoryStep] = useState(0);
+  const [showLayers, setShowLayers] = useState(false);
   const elements = history[historyStep];
 
   const setElements = (newElements: TemplateElement[]) => {
@@ -361,6 +546,111 @@ export default function TemplateEditor() {
 
   const undo = () => historyStep > 0 && setHistoryStep(historyStep - 1);
   const redo = () => historyStep < history.length - 1 && setHistoryStep(historyStep + 1);
+
+  // Initialize Mobile Drag & Drop Polyfill
+  useEffect(() => {
+    polyfill({ holdToDrag: 100 });
+    const preventScroll = () => {};
+    window.addEventListener('touchmove', preventScroll, { passive: false });
+    return () => window.removeEventListener('touchmove', preventScroll);
+  }, []);
+
+  // Load Template if editing
+  useEffect(() => {
+    if (!editId) return;
+    
+    const fetchTemplate = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('templates')
+          .select('*')
+          .eq('id', editId)
+          .single();
+          
+        if (error) throw error;
+        
+        if (data) {
+          setTemplateName(data.name || "Untitled Template");
+          setTemplateCategory(data.category || "General");
+          
+          let loadedIcon = "⭐";
+          if (data.elements && Array.isArray(data.elements)) {
+            const metaEl = data.elements.find((el: any) => el.id === 'category-icon-meta');
+            if (metaEl && metaEl.icon) loadedIcon = metaEl.icon;
+          }
+          setCategoryIcon(loadedIcon);
+
+          setTemplateKeywords(data.keywords || []);
+          setArtboardColor(data.artboard_color || "#ffffff");
+          const cleanBg = data.background_url?.startsWith('blob:') ? null : (data.background_url || null);
+          setBgImageUrl(cleanBg);
+          setOriginalBgImageUrl(cleanBg);
+          
+          if (data.elements && Array.isArray(data.elements) && data.elements.length > 0) {
+            let userData: any = null;
+            if (isClientMode) {
+              try {
+                const stored = localStorage.getItem('nanco_user_data');
+                if (stored) userData = JSON.parse(stored);
+              } catch (e) {
+                console.error("Failed to parse user data", e);
+              }
+            }
+
+            let cleanElements = data.elements
+              .filter((el: any) => el.type !== 'meta')
+              .map((el: any) => {
+              if (el.imageSrc?.startsWith('blob:')) {
+                return { ...el, imageSrc: null };
+              }
+              if (isClientMode) {
+                let updatedEl = { ...el };
+                if (updatedEl.name && updatedEl.name.toLowerCase().includes('logo')) {
+                  updatedEl.isLocked = true;
+                }
+                if (userData) {
+                  if (updatedEl.name === 'userName' && userData.userName) {
+                    updatedEl.placeholderText = userData.userName;
+                  }
+                  if (updatedEl.name === 'userPhone' && userData.userPhone) {
+                    updatedEl.placeholderText = userData.userPhone;
+                  }
+                  if (updatedEl.name === 'userDesignation' && userData.userDesignation) {
+                    updatedEl.placeholderText = userData.userDesignation;
+                  }
+                  if (updatedEl.name === 'userImage' && userData.userPhoto) {
+                    updatedEl.imageSrc = userData.userPhoto;
+                  }
+                }
+                return updatedEl;
+              }
+              return el;
+            });
+
+            // Re-inject the template-bg element if it was stripped during save but we have a background url
+            if (cleanBg && !cleanElements.some((el: any) => el.id === 'template-bg')) {
+               const canvasIdx = cleanElements.findIndex((el: any) => el.id === 'canvas-bg');
+               const insertIdx = canvasIdx >= 0 ? canvasIdx + 1 : 0;
+               cleanElements.splice(insertIdx, 0, { id: 'template-bg', type: 'bg', name: 'Template', x: 0, y: 0, isLocked: true });
+            }
+
+            setHistory([cleanElements]);
+            setHistoryStep(0);
+          } else if (cleanBg) {
+             // Edge case: no elements saved, but we have a bg
+             setHistory([
+               [{ id: 'canvas-bg', type: 'canvas', name: 'Canvas', x: 0, y: 0, isLocked: true },
+                { id: 'template-bg', type: 'bg', name: 'Template', x: 0, y: 0, isLocked: true }]
+             ]);
+             setHistoryStep(0);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load template", err);
+      }
+    };
+    fetchTemplate();
+  }, [editId]);
 
   const [selectedId, setSelectedId] = useState<string | null>('canvas-bg');
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null); // For layer drag drop
@@ -388,11 +678,20 @@ export default function TemplateEditor() {
 
   // Crop State
   const [isCropMode, setIsCropMode] = useState(false);
-  const [cropRect, setCropRect] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
+  const [tempCrop, setTempCrop] = useState<any>(null);
 
   // Left Sidebar State
   const [activeLeftTab, setActiveLeftTab] = useState<'none' | 'branding' | 'uploads'>('none');
   const [uploadedImages, setUploadedImages] = useState<string[]>([]);
+
+  // Turn off modes when selecting another element or opening a sidebar tab
+  useEffect(() => {
+    setIsMagicFillMode(false);
+    setIsBrushMode(false);
+    setIsCornerRadiusMode(false);
+    setIsCropMode(false);
+    setActiveEditingElement(null);
+  }, [selectedId, activeLeftTab]);
 
   // Zoom and Pan State
   const [stageConfig, setStageConfig] = useState({ scale: 1, x: 50, y: 50 });
@@ -688,45 +987,94 @@ export default function TemplateEditor() {
   };
 
   const saveTemplate = async () => {
+    if (isClientMode) {
+      if (!stageRef.current) return;
+      const dataURL = stageRef.current.toDataURL({ pixelRatio: 3 });
+      const link = document.createElement('a');
+      link.download = `${templateName.replace(/\s+/g, '_')}_Edited.png`;
+      link.href = dataURL;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      alert("Image saved!");
+      return;
+    }
+
     setIsSaving(true);
     try {
       let finalBgUrl = null;
-      if (bgImageUrl && bgImageUrl.startsWith('blob:')) {
+      if (bgImageUrl && (bgImageUrl.startsWith('blob:') || bgImageUrl.startsWith('data:'))) {
         const res = await fetch(bgImageUrl);
         const blob = await res.blob();
         const fileExt = blob.type.split('/')[1] || 'png';
         const fileName = `bg_${Date.now()}.${fileExt}`;
         const { error: uploadError } = await supabase.storage.from('templates').upload(fileName, blob);
         
-        // If storage fails, we might just proceed without background or alert (ignoring storage errors if bucket doesn't exist yet for simplicity)
         if (!uploadError) {
           const { data: publicUrlData } = supabase.storage.from('templates').getPublicUrl(fileName);
           finalBgUrl = publicUrlData.publicUrl;
         } else {
-          console.warn("Storage upload failed, background won't be saved correctly if bucket 'templates' is missing.", uploadError);
+          console.warn("Storage upload failed, background won't be saved correctly.", uploadError);
         }
       } else {
         finalBgUrl = bgImageUrl;
       }
 
+      // Process elements to upload any blob/data images so they persist
+      const processedElements = await Promise.all(
+        elements.map(async (el) => {
+          if (el.type === 'image' && el.imageSrc && (el.imageSrc.startsWith('blob:') || el.imageSrc.startsWith('data:'))) {
+            try {
+              const res = await fetch(el.imageSrc);
+              const blob = await res.blob();
+              const fileExt = blob.type.split('/')[1] || 'png';
+              const fileName = `el_${el.id}_${Date.now()}.${fileExt}`;
+              const { error: uploadError } = await supabase.storage.from('templates').upload(fileName, blob);
+              
+              if (!uploadError) {
+                const { data: publicUrlData } = supabase.storage.from('templates').getPublicUrl(fileName);
+                return { ...el, imageSrc: publicUrlData.publicUrl };
+              }
+            } catch (err) {
+              console.warn(`Failed to upload image for element ${el.id}`, err);
+            }
+          }
+          return el;
+        })
+      );
+
+      processedElements.push({ id: 'category-icon-meta', type: 'meta', icon: categoryIcon } as any);
+
       const metadata = {
         name: templateName,
         category: templateCategory,
+        keywords: templateKeywords,
         width: STAGE_WIDTH,
         height: STAGE_HEIGHT,
         artboard_color: artboardColor,
         background_url: finalBgUrl,
-        elements: elements.filter(el => el.type !== 'bg').map(({ id, imageSrc, ...rest }) => rest)
+        elements: processedElements
       };
 
-      const { error } = await supabase.from('templates').insert(metadata);
-      if (error) throw error;
+      let saveError;
+      if (editId) {
+        const { error } = await supabase.from('templates').update(metadata).eq('id', editId);
+        saveError = error;
+      } else {
+        const { error } = await supabase.from('templates').insert(metadata);
+        saveError = error;
+      }
+      
+      if (saveError) throw saveError;
       
       alert("Template saved successfully!");
+      router.refresh();
       router.push("/admin"); // Redirect back to admin dashboard
     } catch (err: any) {
-      console.error("Save Template Error:", err);
-      alert("Failed to save template: " + err.message);
+      console.error("Save Template Error raw:", err);
+      const msg = err?.message || err?.details || err?.hint || (typeof err === 'string' ? err : JSON.stringify(err));
+      console.error("Parsed Error Message:", msg);
+      alert("Failed to save template: " + msg);
     } finally {
       setIsSaving(false);
     }
@@ -735,65 +1083,67 @@ export default function TemplateEditor() {
 
 
   return (
-    <div className="flex h-full w-full gap-4 font-bento bg-white p-2">
+    <div className={`flex h-full w-full gap-4 font-bento bg-white p-2 ${isClientMode ? 'flex-col md:flex-row' : 'flex-row'}`}>
 
       {/* 1. Left Sidebar - Toolbar (Light Bento) */}
-      <div className="w-[80px] bg-gray-50 rounded-[24px] py-6 px-3 flex flex-col items-center gap-6 shadow-sm z-10 shrink-0 h-full border border-gray-200">
+      <div className={`bg-gray-50 rounded-[24px] shadow-sm z-10 shrink-0 border border-gray-200 flex ${isClientMode ? 'w-full md:w-[80px] h-auto md:h-full flex-row md:flex-col overflow-x-auto md:overflow-x-hidden md:overflow-y-auto p-2 md:py-4 md:px-2 gap-2 md:gap-4 items-center' : 'w-[80px] h-full flex-col py-4 px-2 items-center gap-4 overflow-y-auto'} [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]`}>
 
         {/* Templates Back Button */}
-        <button onClick={() => router.back()} className="w-full aspect-square bg-gray-900 hover:bg-gray-800 text-white rounded-[16px] flex flex-col items-center justify-center gap-1 transition-transform hover:scale-105 shadow-md group">
-          <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-          <span className="text-[9px] font-bold uppercase tracking-wider">Templates</span>
+        <button onClick={() => router.back()} className={`bg-gray-900 hover:bg-gray-800 text-white rounded-[16px] flex flex-col items-center justify-center gap-2 transition-transform hover:scale-105 shadow-md group shrink-0 ${isClientMode ? 'w-16 h-full md:w-full md:py-3' : 'w-full py-3'}`}>
+          <ChevronLeft size={16} className={`group-hover:-translate-x-1 transition-transform ${isClientMode ? 'md:block hidden' : ''}`} />
+          <span className="text-[9px] font-bold uppercase tracking-wider">Back</span>
         </button>
 
-        <div className="w-full h-[1px] bg-gray-200"></div>
+        <div className={`bg-gray-200 shrink-0 ${isClientMode ? 'w-[1px] h-8 md:w-full md:h-[1px]' : 'w-full h-[1px]'}`}></div>
 
-        <div className="flex flex-col gap-2 w-full">
-          <button onClick={undo} disabled={historyStep === 0} className="w-full aspect-square bg-white hover:bg-gray-100 disabled:opacity-50 text-gray-700 rounded-[16px] flex items-center justify-center transition-colors border border-gray-200 shadow-sm" title="Undo">
+        <div className={`flex w-full ${isClientMode ? 'flex-row md:flex-col w-auto md:w-full gap-2' : 'flex-col gap-2'}`}>
+          <button onClick={undo} disabled={historyStep === 0} className={`aspect-square bg-white hover:bg-gray-100 disabled:opacity-50 text-gray-700 rounded-[16px] flex items-center justify-center transition-colors border border-gray-200 shadow-sm shrink-0 ${isClientMode ? 'w-12 h-12 md:w-full md:h-auto' : 'w-full'}`} title="Undo">
             <Undo2 size={18} />
           </button>
-          <button onClick={redo} disabled={historyStep === history.length - 1} className="w-full aspect-square bg-white hover:bg-gray-100 disabled:opacity-50 text-gray-700 rounded-[16px] flex items-center justify-center transition-colors border border-gray-200 shadow-sm" title="Redo">
+          <button onClick={redo} disabled={historyStep === history.length - 1} className={`aspect-square bg-white hover:bg-gray-100 disabled:opacity-50 text-gray-700 rounded-[16px] flex items-center justify-center transition-colors border border-gray-200 shadow-sm shrink-0 ${isClientMode ? 'w-12 h-12 md:w-full md:h-auto' : 'w-full'}`} title="Redo">
             <Redo2 size={18} />
           </button>
         </div>
 
-        <div className="w-full h-[1px] bg-gray-200"></div>
+        <div className={`bg-gray-200 shrink-0 ${isClientMode ? 'w-[1px] h-8 md:w-full md:h-[1px]' : 'w-full h-[1px]'}`}></div>
 
         {/* Tools */}
-        <div className="flex flex-col gap-3 w-full">
-          <label className="w-full py-3 bg-white hover:bg-gray-800 hover:text-white text-gray-700 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group cursor-pointer border border-gray-200 shadow-sm">
+        <div className={`flex w-full ${isClientMode ? 'flex-row md:flex-col w-auto md:w-full gap-2 md:gap-3' : 'flex-col gap-3'}`}>
+          <label className={`bg-white hover:bg-gray-800 hover:text-white text-gray-700 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group cursor-pointer border border-gray-200 shadow-sm shrink-0 ${isClientMode ? 'w-16 h-16 md:w-full md:h-auto md:py-3' : 'w-full py-3'}`}>
             <Upload size={20} className="group-hover:-translate-y-1 transition-transform" />
             <span className="text-[9px] font-bold uppercase tracking-wider">BG</span>
             <input type="file" accept="image/*" onChange={handleBgUpload} className="hidden" />
           </label>
 
-          <button onClick={() => addElement("image", "userImage")} className="w-full py-3 bg-white hover:bg-gray-800 hover:text-white text-gray-700 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border border-gray-200 shadow-sm">
+          <button onClick={() => addElement("image", "userImage")} className={`bg-white hover:bg-gray-800 hover:text-white text-gray-700 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border border-gray-200 shadow-sm shrink-0 ${isClientMode ? 'w-16 h-16 md:w-full md:h-auto md:py-3' : 'w-full py-3'}`}>
             <ImageIcon size={20} className="group-hover:-translate-y-1 transition-transform" />
             <span className="text-[9px] font-bold uppercase tracking-wider">Image</span>
           </button>
 
-          <button onClick={() => addElement("text", "userName")} className="w-full py-3 bg-white hover:bg-gray-800 hover:text-white text-gray-700 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border border-gray-200 shadow-sm">
+          <button onClick={() => addElement("text", "userName")} className={`bg-white hover:bg-gray-800 hover:text-white text-gray-700 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border border-gray-200 shadow-sm shrink-0 ${isClientMode ? 'w-16 h-16 md:w-full md:h-auto md:py-3' : 'w-full py-3'}`}>
             <Type size={20} className="group-hover:-translate-y-1 transition-transform" />
             <span className="text-[9px] font-bold uppercase tracking-wider">Text</span>
           </button>
 
-          <div className="w-full h-[1px] bg-gray-200 my-1"></div>
+          <div className={`bg-gray-200 shrink-0 ${isClientMode ? 'w-[1px] h-8 md:w-full md:h-[1px] my-auto md:my-1' : 'w-full h-[1px] my-1'}`}></div>
 
-          <button onClick={() => setActiveLeftTab(activeLeftTab === 'uploads' ? 'none' : 'uploads')} className={`w-full py-3 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border shadow-sm ${activeLeftTab === 'uploads' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-200'}`}>
+          <button onClick={() => setActiveLeftTab(activeLeftTab === 'uploads' ? 'none' : 'uploads')} className={`rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border shadow-sm shrink-0 ${activeLeftTab === 'uploads' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-200'} ${isClientMode ? 'w-16 h-16 md:w-full md:h-auto md:py-3' : 'w-full py-3'}`}>
             <Upload size={20} className="group-hover:-translate-y-1 transition-transform" />
             <span className="text-[9px] font-bold uppercase tracking-wider">Uploads</span>
           </button>
 
-          <button onClick={() => setActiveLeftTab(activeLeftTab === 'branding' ? 'none' : 'branding')} className={`w-full py-3 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border shadow-sm ${activeLeftTab === 'branding' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-200'}`}>
-            <Layers size={20} className="group-hover:-translate-y-1 transition-transform" />
-            <span className="text-[9px] font-bold uppercase tracking-wider">Brand</span>
-          </button>
+          {!isClientMode && (
+            <button onClick={() => setActiveLeftTab(activeLeftTab === 'branding' ? 'none' : 'branding')} className={`w-full py-3 rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group border shadow-sm ${activeLeftTab === 'branding' ? 'bg-gray-900 text-white border-gray-900' : 'bg-white hover:bg-gray-100 text-gray-700 border-gray-200'}`}>
+              <Layers size={20} className="group-hover:-translate-y-1 transition-transform" />
+              <span className="text-[9px] font-bold uppercase tracking-wider">Brand</span>
+            </button>
+          )}
 
-          <div className="w-full h-[1px] bg-gray-200 my-1"></div>
+          <div className={`bg-gray-200 shrink-0 ${isClientMode ? 'w-[1px] h-8 md:w-full md:h-[1px] my-auto md:my-1' : 'w-full h-[1px] my-1'}`}></div>
 
-          <button onClick={saveTemplate} disabled={isSaving} className="w-full py-3 bg-[#2665d6] hover:bg-[#1d4ed8] text-white rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group shadow-sm disabled:opacity-50">
-            {isSaving ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} className="group-hover:-translate-y-1 transition-transform" />}
-            <span className="text-[9px] font-bold uppercase tracking-wider">{isSaving ? 'Saving' : 'Save'}</span>
+          <button onClick={saveTemplate} disabled={isSaving && !isClientMode} className={`bg-[#2665d6] hover:bg-[#1d4ed8] text-white rounded-[16px] flex flex-col items-center justify-center gap-2 transition-all group shadow-sm disabled:opacity-50 shrink-0 ${isClientMode ? 'w-16 h-16 md:w-full md:h-auto md:py-3' : 'w-full py-3'}`}>
+            {isSaving && !isClientMode ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} className="group-hover:-translate-y-1 transition-transform" />}
+            <span className="text-[9px] font-bold uppercase tracking-wider">{isSaving && !isClientMode ? 'Saving' : (isClientMode ? 'Download' : 'Save')}</span>
           </button>
         </div>
       </div>
@@ -859,7 +1209,7 @@ export default function TemplateEditor() {
       )}
 
       {/* 2. Middle Content Area (Canvas + Bottom Tools) */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0 h-full relative">
+      <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0 relative">
 
         {/* Top: Canvas Area */}
         <div
@@ -963,11 +1313,11 @@ export default function TemplateEditor() {
                   onTap={() => setSelectedId('canvas-bg')}
                 />
 
-                {elements.map((el) => {
+                {elements.map((el, idx) => {
                   if (el.type === 'bg' || el.id === 'template-bg') {
                     return bgImage ? (
                       <BgImageElement
-                        key={el.id}
+                        key={el.id || `el-${idx}`}
                         el={el}
                         bgImage={bgImage}
                         STAGE_WIDTH={STAGE_WIDTH}
@@ -985,11 +1335,14 @@ export default function TemplateEditor() {
                   if (el.type === "image") {
                     return (
                       <URLImageElement
-                        key={el.id}
+                        key={el.id || `el-${idx}`}
                         el={el}
                         selectedId={selectedId}
                         onSelect={() => setSelectedId(el.id)}
                         onChange={(newAttrs) => updateElement(el.id, newAttrs)}
+                        isCropMode={isCropMode}
+                        tempCrop={tempCrop}
+                        setTempCrop={setTempCrop}
                       />
                     );
                   }
@@ -997,7 +1350,7 @@ export default function TemplateEditor() {
                   if (el.type === "text") {
                     return (
                       <Text
-                        key={el.id}
+                        key={el.id || `el-${idx}`}
                         id={el.id}
                         text={el.placeholderText}
                         x={el.x}
@@ -1044,7 +1397,7 @@ export default function TemplateEditor() {
               className="absolute z-20 flex items-center gap-1 bg-white p-1.5 rounded-[12px] shadow-[0_4px_16px_rgba(0,0,0,0.1)] border border-gray-100 animate-in fade-in zoom-in duration-200"
               style={{ left: menuPosition.x, top: menuPosition.y, transform: 'translate(-50%, -100%)' }}
             >
-              <button className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[13px] font-medium">
+              <button onClick={() => setActiveEditingElement(selectedElement.id)} className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[13px] font-medium">
                 Edit
               </button>
 
@@ -1058,7 +1411,7 @@ export default function TemplateEditor() {
                 BG Remover {isProcessingAI && <Loader2 size={12} className="animate-spin ml-1" />}
               </button>
 
-              <button className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[13px] font-medium">
+              <button onClick={() => setIsBrushMode(true)} className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[13px] font-medium">
                 Eraser
               </button>
 
@@ -1075,11 +1428,11 @@ export default function TemplateEditor() {
 
               <div className="w-[1px] h-5 bg-gray-200 mx-1"></div>
 
-              <button className="flex items-center gap-1.5 p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700" title="Stroke style">
+              <button onClick={() => setIsCornerRadiusMode(true)} className="flex items-center gap-1.5 p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700" title="Corner Radius">
                 <Square size={16} />
               </button>
 
-              <button className="flex items-center gap-1.5 p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700" title="Crop">
+              <button onClick={() => setIsCropMode(true)} className="flex items-center gap-1.5 p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700" title="Crop">
                 <Crop size={16} />
               </button>
 
@@ -1089,13 +1442,15 @@ export default function TemplateEditor() {
 
               <div className="w-[1px] h-5 bg-gray-200 mx-1"></div>
 
-              <button
-                onClick={() => updateElement(selectedElement.id, { isLocked: !selectedElement.isLocked })}
-                className="flex items-center gap-1.5 p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700"
-                title={selectedElement.isLocked ? "Unlock" : "Lock"}
-              >
-                {selectedElement.isLocked ? <Lock size={16} /> : <Unlock size={16} />}
-              </button>
+              {!isClientMode && (
+                <button
+                  onClick={() => updateElement(selectedElement.id, { isLocked: !selectedElement.isLocked })}
+                  className="flex items-center gap-1.5 p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700"
+                  title={selectedElement.isLocked ? "Unlock" : "Lock"}
+                >
+                  {selectedElement.isLocked ? <Lock size={16} /> : <Unlock size={16} />}
+                </button>
+              )}
 
               <button onClick={bringForward} className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700" title="Bring Forward">
                 <ArrowUpToLine size={16} />
@@ -1128,7 +1483,17 @@ export default function TemplateEditor() {
       </div>
 
       {/* 3. Right Sidebar - Properties (Light Bento) */}
-      <div className="w-[320px] bg-gray-50 rounded-[24px] flex flex-col shadow-sm h-full shrink-0 overflow-hidden text-gray-800 border border-gray-200">
+      <div 
+        className={`bg-gray-50 rounded-[24px] flex flex-col shadow-sm shrink-0 overflow-hidden text-gray-800 border border-gray-200 relative ${isClientMode ? 'w-full md:w-[320px] h-[35vh] md:h-full' : 'w-[320px] h-full'}`}
+        onClickCapture={(e) => {
+          if (isMagicFillMode) {
+            const target = e.target as HTMLElement;
+            if (!target.closest('.magic-fill-container')) {
+              setIsMagicFillMode(false);
+            }
+          }
+        }}
+      >
 
         {isCornerRadiusMode ? (
           <div className="flex flex-col h-full">
@@ -1305,94 +1670,203 @@ export default function TemplateEditor() {
         ) : (
           <>
             {/* Header */}
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
-              <h2 className="font-semibold text-gray-900 text-[16px]">Properties</h2>
-            </div>
+            {!isClientMode && (
+              <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                <h2 className="font-semibold text-gray-900 text-[16px]">Properties</h2>
+              </div>
+            )}
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] p-5 flex flex-col gap-6">
 
           {/* Template Meta */}
-          <div className="flex flex-col gap-4 pb-5 border-b border-gray-200">
-             <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Template Name</label>
-                <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]" placeholder="e.g. Birthday Card" />
+          {!isClientMode && (
+            <div className="flex flex-col gap-4 pb-5 border-b border-gray-200">
+               <div className="flex flex-col gap-1.5">
+                  <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Template Name</label>
+                  <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} className="w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]" placeholder="e.g. Birthday Card" />
+               </div>
+               <div className="flex flex-col gap-1.5 relative">
+                  <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Category</label>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowIconPicker(!showIconPicker)}
+                      className="w-10 h-10 bg-white border border-gray-200 rounded-[10px] flex items-center justify-center text-lg shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#2665d6]"
+                    >
+                      {categoryIcon}
+                    </button>
+                    {showIconPicker && (
+                      <div className="absolute top-12 left-0 z-[9999] shadow-lg rounded-[10px] overflow-visible">
+                        <EmojiPicker 
+                          onEmojiClick={(emojiObject) => {
+                            setCategoryIcon(emojiObject.emoji);
+                            setShowIconPicker(false);
+                          }}
+                          width={300}
+                          height={400}
+                          style={{ zIndex: 9999 }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <input 
+                    value={templateCategory} 
+                    onChange={(e) => {
+                      setTemplateCategory(e.target.value);
+                      const existing = existingCategories.find(c => c.name.toLowerCase() === e.target.value.toLowerCase());
+                      if (existing) setCategoryIcon(existing.icon);
+                    }} 
+                    onFocus={() => setIsCategoryDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setIsCategoryDropdownOpen(false), 200)}
+                    placeholder="Select or type category..."
+                    className="flex-1 min-w-0 w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]"
+                  />
+                </div>
+                {isCategoryDropdownOpen && existingCategories.length > 0 && (
+                  <div className="absolute top-[100%] z-50 w-full mt-1 bg-white border border-gray-200 rounded-[10px] shadow-lg max-h-48 overflow-y-auto">
+                    {existingCategories.map((cat, idx) => (
+                      <div 
+                        key={idx} 
+                        className="px-3 py-2 text-[13px] text-gray-700 hover:bg-gray-100 cursor-pointer flex items-center gap-2"
+                        onMouseDown={(e) => {
+                          e.preventDefault(); // Prevent onBlur from firing before onClick
+                          setTemplateCategory(cat.name);
+                          setCategoryIcon(cat.icon);
+                          setIsCategoryDropdownOpen(false);
+                        }}
+                      >
+                        <span>{cat.icon}</span> {cat.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
              </div>
              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Category</label>
-                <select value={templateCategory} onChange={(e) => setTemplateCategory(e.target.value)} className="w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]">
-                  <option value="General">General</option>
-                  <option value="Birthday">Birthday</option>
-                  <option value="Wedding">Wedding</option>
-                  <option value="Onam">Onam</option>
-                  <option value="Christmas">Christmas</option>
-                </select>
+                <label className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Keywords</label>
+                {templateKeywords.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-1">
+                    {templateKeywords.map((kw, idx) => (
+                      <span key={idx} className="bg-gray-100 border border-gray-200 text-gray-700 px-2.5 py-1 rounded-[6px] text-[11px] font-medium flex items-center gap-1.5">
+                        {kw}
+                        <button type="button" onClick={() => setTemplateKeywords(prev => prev.filter((_, i) => i !== idx))} className="hover:text-red-500 text-gray-400 flex items-center justify-center">
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <input 
+                  value={keywordInput} 
+                  onChange={(e) => setKeywordInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ',') {
+                      e.preventDefault();
+                      const val = keywordInput.trim();
+                      if (val && !templateKeywords.includes(val)) {
+                        setTemplateKeywords([...templateKeywords, val]);
+                        setKeywordInput('');
+                      }
+                    }
+                  }}
+                  placeholder="Type keyword and press Enter..."
+                  className="w-full bg-white text-gray-900 border border-gray-200 rounded-[10px] px-3 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2665d6]"
+                />
              </div>
-          </div>
+             </div>
+          )}
 
           {selectedElement ? (
             <>
               {/* Canva-style Context Tools */}
               <div className="flex flex-col gap-3 bg-white p-3 rounded-[12px] border border-gray-200 shadow-sm">
 
-                <div className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-1">
-                  <button onClick={() => setActiveEditingElement(selectedElement.id)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
-                    Edit
-                  </button>
-                  <div className="w-[1px] h-5 bg-gray-200 shrink-0 mx-1"></div>
-
-                  <button
-                    onClick={selectedElement.type === 'image' || selectedElement.type === 'bg' ? removeBackgroundAI : undefined}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] transition-colors text-[12px] font-medium shrink-0 border border-gray-200 shadow-sm ${selectedElement.type === 'image' || selectedElement.type === 'bg' ? 'bg-gray-100 text-gray-800 hover:opacity-80' : 'text-gray-400 bg-gray-50 cursor-not-allowed'}`}
-                  >
-                    BG Remover <span className="bg-gray-800 text-white px-1 rounded-[4px] text-[9px] uppercase tracking-wider ml-1">Pro</span>
-                    {isProcessingAI && <Loader2 size={12} className="animate-spin ml-1" />}
-                  </button>
-
-                  <button onClick={() => setIsBrushMode(true)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
-                    <Eraser size={12} /> Brush
-                  </button>
-
-                  <button onClick={() => setIsCornerRadiusMode(true)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
-                    <Square size={12} /> Corner Radius
-                  </button>
-                </div>
-
-                <div className="w-full h-[1px] bg-gray-200"></div>
-
-                <div className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-1">
-                  {/* Colours Group */}
-                  <div className="flex gap-1.5 shrink-0 bg-gray-50 p-1 rounded-[8px] border border-gray-200">
-                    <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#8e6251' }) : selectedElement.type === 'canvas' ? setArtboardColor('#8e6251') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#8e6251' }} title="Greyorange"></button>
-                    <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#d1dcb8' }) : selectedElement.type === 'canvas' ? setArtboardColor('#d1dcb8') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#d1dcb8' }} title="Pastel greygreen"></button>
-                    <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#d6a78a' }) : selectedElement.type === 'canvas' ? setArtboardColor('#d6a78a') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#d6a78a' }} title="Greyorange"></button>
-                    <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#ffffff' }) : selectedElement.type === 'canvas' ? setArtboardColor('#ffffff') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#ffffff' }} title="White"></button>
-                    <div className="relative w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform flex items-center justify-center bg-white overflow-hidden" title="Current Color">
-                      <input
-                        id="main-color-picker"
-                        type="color"
-                        value={selectedElement.type === 'text' ? (selectedElement.fill || '#000000') : selectedElement.type === 'canvas' ? artboardColor : '#ffffff'}
-                        onChange={(e) => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: e.target.value }) : selectedElement.type === 'canvas' ? setArtboardColor(e.target.value) : undefined}
-                        className="w-10 h-10 cursor-pointer absolute -top-2 -left-2"
-                      />
+                {isCropMode ? (
+                  <div className="flex flex-col gap-3">
+                    <span className="text-[13px] font-medium text-gray-700">Crop Image</span>
+                    <p className="text-[11px] text-gray-500">Drag the image to pan. Use corner handles to scale the image inside the placeholder.</p>
+                    <div className="flex gap-2 mt-2">
+                      <button 
+                        onClick={() => {
+                          if (tempCrop) {
+                            updateElement(selectedElement.id, { crop: tempCrop });
+                          }
+                          setIsCropMode(false);
+                          setTempCrop(null);
+                        }} 
+                        className="flex-1 bg-gray-900 text-white py-2 rounded-[8px] text-[12px] font-medium hover:bg-gray-800 transition-colors"
+                      >
+                        Apply Crop
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setIsCropMode(false);
+                          setTempCrop(null);
+                        }} 
+                        className="flex-1 bg-white border border-gray-200 text-gray-700 py-2 rounded-[8px] text-[12px] font-medium hover:bg-gray-50 transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-1">
+                      <button onClick={() => setActiveEditingElement(selectedElement.id)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
+                        Edit
+                      </button>
+                      <div className="w-[1px] h-5 bg-gray-200 shrink-0 mx-1"></div>
 
-                  <div className="w-[1px] h-5 bg-gray-200 shrink-0 mx-1"></div>
+                      <button
+                        onClick={selectedElement.type === 'image' || selectedElement.type === 'bg' ? removeBackgroundAI : undefined}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] transition-colors text-[12px] font-medium shrink-0 border border-gray-200 shadow-sm ${selectedElement.type === 'image' || selectedElement.type === 'bg' ? 'bg-gray-100 text-gray-800 hover:opacity-80' : 'text-gray-400 bg-gray-50 cursor-not-allowed'}`}
+                      >
+                        BG Remover <span className="bg-gray-800 text-white px-1 rounded-[4px] text-[9px] uppercase tracking-wider ml-1">Pro</span>
+                        {isProcessingAI && <Loader2 size={12} className="animate-spin ml-1" />}
+                      </button>
 
-                  <button className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 border border-gray-200 shadow-sm shrink-0" title="Stroke style">
-                    <Square size={14} />
-                  </button>
-                  <button className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 border border-gray-200 shadow-sm shrink-0" title="Crop">
-                    <Crop size={14} />
-                  </button>
-                  <button className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
-                    Flip
-                  </button>
-                  <button className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 border border-gray-200 shadow-sm shrink-0" title="More">
-                    <MoreHorizontal size={14} />
-                  </button>
-                </div>
+                      <button onClick={() => setIsBrushMode(true)} className="flex items-center justify-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
+                        <Eraser size={12} /> Brush
+                      </button>
+                    </div>
+
+                    <div className="w-full h-[1px] bg-gray-200"></div>
+
+                    <div className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden pb-1">
+                      {/* Colours Group */}
+                      <div className="flex gap-1.5 shrink-0 bg-gray-50 p-1 rounded-[8px] border border-gray-200">
+                        <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#8e6251' }) : selectedElement.type === 'canvas' ? setArtboardColor('#8e6251') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#8e6251' }} title="Greyorange"></button>
+                        <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#d1dcb8' }) : selectedElement.type === 'canvas' ? setArtboardColor('#d1dcb8') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#d1dcb8' }} title="Pastel greygreen"></button>
+                        <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#d6a78a' }) : selectedElement.type === 'canvas' ? setArtboardColor('#d6a78a') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#d6a78a' }} title="Greyorange"></button>
+                        <button onDoubleClick={() => document.getElementById('main-color-picker')?.click()} onClick={() => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: '#ffffff' }) : selectedElement.type === 'canvas' ? setArtboardColor('#ffffff') : undefined} className="w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform" style={{ background: '#ffffff' }} title="White"></button>
+                        <div className="relative w-6 h-6 rounded-[4px] shadow-sm border border-black/10 hover:scale-110 transition-transform flex items-center justify-center bg-white overflow-hidden" title="Current Color">
+                          <input
+                            id="main-color-picker"
+                            type="color"
+                            value={selectedElement.type === 'text' ? (selectedElement.fill || '#000000') : selectedElement.type === 'canvas' ? artboardColor : '#ffffff'}
+                            onChange={(e) => selectedElement.type === 'text' ? updateElement(selectedElement.id, { fill: e.target.value }) : selectedElement.type === 'canvas' ? setArtboardColor(e.target.value) : undefined}
+                            className="w-10 h-10 cursor-pointer absolute -top-2 -left-2"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="w-[1px] h-5 bg-gray-200 shrink-0 mx-1"></div>
+
+                      <button onClick={() => setIsCornerRadiusMode(true)} className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 border border-gray-200 shadow-sm shrink-0" title="Corner Radius">
+                        <Square size={14} />
+                      </button>
+                      <button onClick={() => setIsCropMode(true)} className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 border border-gray-200 shadow-sm shrink-0" title="Crop">
+                        <Crop size={14} />
+                      </button>
+                      <button onClick={() => updateElement(selectedElement.id, { flipX: !selectedElement.flipX })} className="flex items-center gap-1.5 px-3 py-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 text-[12px] font-medium border border-gray-200 shadow-sm shrink-0">
+                        Flip
+                      </button>
+                      <button className="p-1.5 hover:bg-gray-100 rounded-[8px] transition-colors text-gray-700 border border-gray-200 shadow-sm shrink-0" title="More">
+                        <MoreHorizontal size={14} />
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Layer Controls */}
@@ -1417,7 +1891,7 @@ export default function TemplateEditor() {
                 <div className="flex flex-col gap-6">
 
                   {/* Magic Fill */}
-                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-4 magic-fill-container">
                     <div className="flex items-center gap-2 text-gray-900">
                       <PaintBucket size={16} />
                       <h3 className="text-[14px] font-semibold">Magic Fill Tool</h3>
@@ -1566,41 +2040,60 @@ export default function TemplateEditor() {
         </div>
 
         {/* Layers / Position Panel */}
-        <div className="border-t border-gray-200 bg-white p-4 flex flex-col h-[280px] shrink-0">
-          <div className="flex items-center gap-2 mb-3">
-            <Layers size={16} className="text-gray-900" />
-            <h3 className="font-semibold text-gray-900 text-[14px]">Layers</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
-            {[...elements].reverse().map((el, index) => {
-              const actualIndex = elements.length - 1 - index;
-              const isSelected = selectedId === el.id;
+        {showLayers ? (
+          <div className={`border-t border-gray-200 bg-white p-4 flex flex-col shrink-0 animate-in slide-in-from-bottom-4 duration-200 shadow-[0_-4px_16px_rgba(0,0,0,0.05)] z-20 ${isClientMode ? 'absolute inset-0' : 'h-[280px] relative'}`}>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2">
+                <Layers size={16} className="text-gray-900" />
+                <h3 className="font-semibold text-gray-900 text-[14px]">Layers</h3>
+              </div>
+              <button onClick={() => setShowLayers(false)} className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-500">
+                <ChevronLeft size={16} className="-rotate-90" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full">
+              {[...elements].reverse().map((el, index) => {
+                const actualIndex = elements.length - 1 - index;
+                const isSelected = selectedId === el.id;
 
-              return (
-                <div
-                  key={el.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, el.id)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, actualIndex)}
-                  onClick={() => setSelectedId(el.id)}
-                  className={`flex items-center justify-between p-2 rounded-[10px] cursor-pointer border ${isSelected ? 'bg-gray-100 border-gray-300' : 'bg-gray-50 border-gray-200 hover:border-gray-300'} transition-all`}
-                >
-                  <div className="flex items-center gap-2 truncate">
-                    <GripVertical size={14} className="text-gray-400 cursor-grab" />
-                    <span className="text-[12px] font-medium text-gray-700 truncate">{el.name}</span>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); updateElement(el.id, { isLocked: !el.isLocked }); }}
-                    className="p-1 hover:bg-gray-200 rounded-[6px] text-gray-500"
+                return (
+                  <div
+                    key={el.id || `layer-${index}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, el.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={(e) => handleDrop(e, actualIndex)}
+                    onClick={() => setSelectedId(el.id)}
+                    className={`flex items-center justify-between p-2 rounded-[10px] cursor-pointer border ${isSelected ? 'bg-gray-100 border-gray-300' : 'bg-gray-50 border-gray-200 hover:border-gray-300'} transition-all`}
                   >
-                    {el.isLocked ? <Lock size={12} /> : <Unlock size={12} />}
-                  </button>
-                </div>
-              );
-            })}
+                    <div className="flex items-center gap-2 truncate">
+                      <GripVertical size={14} className="text-gray-400 cursor-grab" />
+                      <span className="text-[12px] font-medium text-gray-700 truncate">{el.name}</span>
+                    </div>
+                    
+                    {!isClientMode && (
+                      <button
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          updateElement(el.id, { isLocked: !el.isLocked }); 
+                        }}
+                        className="p-1 hover:bg-gray-200 rounded-[6px] text-gray-500"
+                      >
+                        {el.isLocked ? <Lock size={12} /> : <Unlock size={12} />}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="border-t border-gray-200 bg-white p-3 flex shrink-0 justify-center">
+            <button onClick={() => setShowLayers(true)} className="flex items-center justify-center gap-2 text-[13px] font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 py-2.5 px-4 rounded-[10px] w-full transition-colors shadow-sm">
+              <Layers size={16} /> Show Layers
+            </button>
+          </div>
+        )}
       </>
     )}
   </div>
