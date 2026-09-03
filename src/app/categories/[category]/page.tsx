@@ -31,16 +31,20 @@ export default async function CategoryPage({ params }: { params: Promise<{ categ
 
   const { data: templates } = await query;
 
-  // Try to find the dynamic icon assigned to this category in the database
+  // Fetch a single template's elements to find the dynamic category icon
   let dynamicIcon = meta.icon;
-  if (templates && templates.length > 0) {
-    for (const t of templates) {
-      if (t.elements && Array.isArray(t.elements)) {
-        const metaEl = t.elements.find((el: any) => el.id === 'category-icon-meta');
-        if (metaEl && metaEl.icon) {
-          dynamicIcon = metaEl.icon;
-          break; // Stop at the first template that has a valid category icon
-        }
+  if (decodedCategory !== 'General') {
+    const { data: iconData } = await supabase
+      .from('templates')
+      .select('elements')
+      .eq('category', decodedCategory)
+      .limit(1)
+      .maybeSingle();
+
+    if (iconData?.elements && Array.isArray(iconData.elements)) {
+      const metaEl = iconData.elements.find((el: any) => el.id === 'category-icon-meta');
+      if (metaEl && metaEl.icon) {
+        dynamicIcon = metaEl.icon;
       }
     }
   }
