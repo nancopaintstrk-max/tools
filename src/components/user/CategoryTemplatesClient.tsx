@@ -38,9 +38,9 @@ export function CategoryTemplatesClient({
     // Check tags (if we have them as an array or JSON string)
     if (template.tags) {
       if (Array.isArray(template.tags)) {
-        if (template.tags.some(t => t.toLowerCase().includes(query))) return true;
+        if (template.tags.some(t => typeof t === 'string' && t.toLowerCase().includes(query))) return true;
       } else if (typeof template.tags === 'string') {
-        if (template.tags.toLowerCase().includes(query)) return true;
+        if ((template.tags as unknown as string).toLowerCase().includes(query)) return true;
       }
     }
     
