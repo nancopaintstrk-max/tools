@@ -4,8 +4,8 @@ import { ChevronLeft, SlidersHorizontal } from "lucide-react";
 import { BottomNav } from "@/components/user/BottomNav";
 import { CategoryTemplatesClient } from "@/components/user/CategoryTemplatesClient";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// export const dynamic = 'force-dynamic';
+export const revalidate = 30;
 
 const CATEGORY_META: Record<string, { gradient: string; icon: string; desc: string }> = {
   Birthday: { gradient: 'from-pink-500 to-rose-600', icon: '🎂', desc: 'Celebrate in style' },
@@ -22,7 +22,7 @@ export default async function CategoryPage({ params }: { params: Promise<{ categ
 
   let query = supabase
     .from('templates')
-    .select('*')
+    .select('id, name, category, background_url, artboard_color, tags')
     .order('created_at', { ascending: false });
 
   if (decodedCategory !== 'General') {

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300">
+  <defs>
+    <!-- Vibrant gradient representing creativity and paint -->
+    <linearGradient id="paintGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B6B" />
+      <stop offset="50%" stop-color="#9B59B6" />
+      <stop offset="100%" stop-color="#4ECDC4" />
+    </linearGradient>
+  </defs>
+
+  <!-- Clean white background -->
+  <rect width="300" height="300" fill="#ffffff" rx="20" />
+
+  <!-- The stylized 'C' graphic -->
+  <path d="M 195 95 A 65 65 0 1 0 195 175"
+        fill="none"
+        stroke="url(#paintGrad)"
+        stroke-width="24"
+        stroke-linecap="round" />
+
+  <!-- A small decorative paint drip/dot to tie into 'crafter/paints' -->
+  <circle cx="195" cy="195" r="12" fill="#4ECDC4" />
+
+  <!-- The nancopaints subtext -->
+  <text x="150" y="245" font-family="'Segoe UI', Helvetica, sans-serif" font-size="20" font-weight="700" text-anchor="middle" letter-spacing="4" fill="#2d3436">
+    nancopaints
+  </text>
+</svg>

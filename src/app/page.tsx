@@ -7,8 +7,8 @@ import { UserAvatarMenu } from "@/components/user/UserAvatarMenu";
 import { HeroCarousel } from "@/components/user/HeroCarousel";
 import { BottomNav } from "@/components/user/BottomNav";
 
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+// export const dynamic = 'force-dynamic'; // Removed to allow ISR caching
+export const revalidate = 30; // Cache for 30 seconds to significantly reduce routing lag
 
 /* ── Dynamic Categories ─────────────────────────────── */
 async function DynamicCategories() {
